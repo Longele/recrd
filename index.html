@@ -392,7 +392,7 @@
         <line x1="15" y1="29" x2="21" y2="29" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="11" y1="32" x2="25" y2="32" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
-      <p>Ready to record</p>
+      <p id="placeholder-text">Ready to record</p>
     </div>
     <video id="live-video" autoplay muted playsinline></video>
     <video id="playback-video" controls playsinline></video>
@@ -414,6 +414,11 @@
       <input type="checkbox" id="chk-mic" />
       <span class="toggle-switch"></span>
       Microphone
+    </label>
+    <label class="toggle-label" id="lbl-cam" style="display:none;">
+      <input type="checkbox" id="chk-cam" />
+      <span class="toggle-switch"></span>
+      Front camera
     </label>
   </div>
 
@@ -460,23 +465,36 @@
   const playback    = document.getElementById('playback-video');
   const chkAudio    = document.getElementById('chk-audio');
   const chkMic      = document.getElementById('chk-mic');
+  const chkCam      = document.getElementById('chk-cam');
   const lblAudio    = document.getElementById('lbl-audio');
   const lblMic      = document.getElementById('lbl-mic');
+  const lblCam      = document.getElementById('lbl-cam');
   const recList     = document.getElementById('recordings');
   const recLabel    = document.getElementById('rec-label');
   const unsupported = document.getElementById('unsupported');
 
-  /* ── Check support ── */
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    unsupported.style.display = 'block';
-    btnMain.disabled = true;
-    btnMain.style.opacity = '0.3';
-    btnMain.style.cursor = 'not-allowed';
+  /* ── Detect mobile ── */
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const hasDisplayMedia = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
+  const hasUserMedia = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+
+  if (isMobile || !hasDisplayMedia) {
+    if (hasUserMedia) {
+      btnMain.textContent = 'Start camera recording';
+      document.querySelector('.footer').textContent = 'Recording via camera — screen capture is desktop only';
+      lblAudio.style.display = 'none';
+      lblCam.style.display = 'flex';
+    } else {
+      unsupported.style.display = 'block';
+      btnMain.disabled = true;
+      btnMain.style.opacity = '0.3';
+      btnMain.style.cursor = 'not-allowed';
+    }
   }
 
   /* ── Toggle UI ── */
-  [chkAudio, chkMic].forEach((chk, i) => {
-    const lbl = i === 0 ? lblAudio : lblMic;
+  [chkAudio, chkMic, chkCam].forEach((chk, i) => {
+    const lbl = [lblAudio, lblMic, lblCam][i];
     chk.addEventListener('change', () => {
       lbl.classList.toggle('active', chk.checked);
     });
@@ -550,10 +568,13 @@
   function setTogglesDisabled(disabled) {
     chkAudio.disabled = disabled;
     chkMic.disabled = disabled;
+    chkCam.disabled = disabled;
     lblAudio.style.opacity = disabled ? '0.4' : '1';
     lblAudio.style.pointerEvents = disabled ? 'none' : 'auto';
     lblMic.style.opacity = disabled ? '0.4' : '1';
     lblMic.style.pointerEvents = disabled ? 'none' : 'auto';
+    lblCam.style.opacity = disabled ? '0.4' : '1';
+    lblCam.style.pointerEvents = disabled ? 'none' : 'auto';
   }
 
   function showLive() {
@@ -578,16 +599,23 @@
   /* ── Recording logic ── */
   async function startRecording() {
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
-        audio: chkAudio.checked
-      });
-
-      if (chkMic.checked) {
-        try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStream.getAudioTracks().forEach(t => stream.addTrack(t));
-        } catch (_) {}
+      if (isMobile || !hasDisplayMedia) {
+        const facing = chkCam.checked ? 'user' : 'environment';
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing },
+          audio: chkMic.checked
+        });
+      } else {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: chkAudio.checked
+        });
+        if (chkMic.checked) {
+          try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream.getAudioTracks().forEach(t => stream.addTrack(t));
+          } catch (_) {}
+        }
       }
 
       liveVideo.srcObject = stream;
